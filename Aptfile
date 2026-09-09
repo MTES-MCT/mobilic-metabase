@@ -1,0 +1,2 @@
+:repo:deb [trusted=yes] http://apt.postgresql.org/pub/repos/apt jammy-pgdg main
+postgresql-client-17

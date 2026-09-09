@@ -1,0 +1,5 @@
+{
+  "jobs": [
+    { "command": "0 3 * * * bash refresh_analytics_replica.sh", "size": "M" }
+  ]
+}
