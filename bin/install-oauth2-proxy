@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+set -eo pipefail
+
+OAUTH2_PROXY_VERSION="7.15.4"
+OAUTH2_PROXY_ARCHIVE="oauth2-proxy-v${OAUTH2_PROXY_VERSION}.linux-amd64"
+OAUTH2_PROXY_SHA256="4fbe902189aab713d9c0519b90a645032d4636ecb523dc36f5cc312d8ebef1e2"
+
+echo "-----> Installing oauth2-proxy v${OAUTH2_PROXY_VERSION}"
+
+TARBALL="/tmp/${OAUTH2_PROXY_ARCHIVE}.tar.gz"
+curl -fsSL -o "$TARBALL" "https://github.com/oauth2-proxy/oauth2-proxy/releases/download/v${OAUTH2_PROXY_VERSION}/${OAUTH2_PROXY_ARCHIVE}.tar.gz"
+
+echo "-----> Verifying checksum"
+ACTUAL=$(sha256sum "$TARBALL" | awk '{print $1}')
+if [ "$ACTUAL" != "$OAUTH2_PROXY_SHA256" ]; then
+    echo "  -> ERROR: checksum mismatch (expected ${OAUTH2_PROXY_SHA256}, got ${ACTUAL})"
+    rm -f "$TARBALL"
+    exit 1
+fi
+
+tar xz -f "$TARBALL"
+mv "${OAUTH2_PROXY_ARCHIVE}/oauth2-proxy" ./bin/oauth2-proxy
+rm -rf "${OAUTH2_PROXY_ARCHIVE}" "$TARBALL"
+
+chmod +x ./bin/oauth2-proxy
+
+echo "-----> oauth2-proxy v${OAUTH2_PROXY_VERSION} installed (checksum verified)"

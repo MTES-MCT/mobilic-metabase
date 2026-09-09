@@ -1,0 +1,16 @@
+{
+  "name": "Mobilic Metabase",
+  "description": "Configuration et déploiement de l'instance Metabase pour la plateforme Mobilic",
+  "repository": "https://github.com/MTES-MCT/mobilic-metabase",
+  "env": {
+    "BUILDPACK_URL": {
+      "description": "Buildpack used to deploy Metabase",
+      "value": "https://github.com/Scalingo/multi-buildpack.git#b7cc7dc8294519d44ad3bc24aef1fd0c4f66d8cf",
+      "required": true
+    },
+    "MAX_METASPACE_SIZE": {
+      "description": "JVM metaspace memory limit",
+      "value": "512m"
+    }
+  }
+}

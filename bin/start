@@ -1,0 +1,102 @@
+#!/usr/bin/env bash
+
+set -eo pipefail
+
+# installed at runtime because multi-buildpack has no hook for custom binaries
+if [ ! -f ./bin/oauth2-proxy ]; then
+    ./bin/install-oauth2-proxy
+fi
+
+# Check required oauth2-proxy variables
+for var in OAUTH2_PROXY_CLIENT_ID OAUTH2_PROXY_CLIENT_SECRET OAUTH2_PROXY_COOKIE_SECRET OAUTH2_PROXY_GITHUB_ORG OAUTH2_PROXY_GITHUB_TEAM OAUTH2_PROXY_REDIRECT_URL; do
+    if [ -z "${!var}" ]; then
+        echo "  -> ERROR: $var is not set"
+        exit 1
+    fi
+done
+
+# Metabase listens on an internal port, oauth2-proxy on the public $PORT
+METABASE_PORT=3001
+export MB_JETTY_PORT="$METABASE_PORT"
+export MB_JETTY_HOST="127.0.0.1"
+
+# Scalingo PostgreSQL (Metabase application database, not the Mobilic data source)
+if [ "$DATABASE_URL" ]; then
+    if [[ $DATABASE_URL == *"?"* ]]; then
+        export MB_DB_CONNECTION_URI="$DATABASE_URL"
+    else
+        export MB_DB_CONNECTION_URI="$DATABASE_URL?ssl=true&sslmode=require&sslfactory=org.postgresql.ssl.NonValidatingFactory"
+    fi
+fi
+
+# JVM options
+MAX_METASPACE_SIZE=${MAX_METASPACE_SIZE:-512m}
+JAVA_MAX_HEAP=${JAVA_MAX_HEAP:-1g}
+JAVA_OPTS=""
+JAVA_OPTS+=" -Xmx${JAVA_MAX_HEAP}"
+JAVA_OPTS+=" -XX:-UseGCOverheadLimit"
+JAVA_OPTS+=" -XX:+UseCompressedOops"
+JAVA_OPTS+=" -XX:+UseCompressedClassPointers"
+JAVA_OPTS+=" -XX:MaxMetaspaceSize=$MAX_METASPACE_SIZE"
+JAVA_OPTS+=" -XX:+UseG1GC"
+JAVA_OPTS+=" -XX:+UseStringDeduplication"
+JAVA_OPTS+=" -server"
+JAVA_OPTS+=" -Djava.awt.headless=true"
+JAVA_OPTS+=" -Dfile.encoding=UTF-8"
+
+# Cleanup: kills Metabase if the script exits during startup (before exec replaces the process)
+EXITCODE=0
+cleanup() {
+    echo "  -> Shutting down..."
+    kill $METABASE_PID 2>/dev/null
+    wait $METABASE_PID 2>/dev/null
+    exit $EXITCODE
+}
+trap cleanup EXIT SIGTERM SIGINT
+
+# Start Metabase in background on internal port
+java $JAVA_OPTS -jar ./target/uberjar/metabase.jar &
+METABASE_PID=$!
+
+# Wait for Metabase to be ready (max 120s)
+echo "  -> Waiting for Metabase to start on port $METABASE_PORT..."
+READY=false
+for i in $(seq 1 120); do
+    if ! kill -0 $METABASE_PID 2>/dev/null; then
+        echo "  -> Metabase process died during startup"
+        EXITCODE=1
+        exit 1
+    fi
+    if curl -sf "http://localhost:$METABASE_PORT/api/health" > /dev/null 2>&1; then
+        echo "  -> Metabase is ready"
+        READY=true
+        break
+    fi
+    sleep 1
+done
+
+if [ "$READY" != "true" ]; then
+    echo "  -> Metabase failed to start within 120s"
+    EXITCODE=1
+    kill $METABASE_PID 2>/dev/null
+    exit 1
+fi
+
+# Start oauth2-proxy on public $PORT, proxying to Metabase
+exec ./bin/oauth2-proxy \
+    --http-address="0.0.0.0:$PORT" \
+    --upstream="http://localhost:$METABASE_PORT" \
+    --provider=github \
+    --github-org="$OAUTH2_PROXY_GITHUB_ORG" \
+    --github-team="$OAUTH2_PROXY_GITHUB_TEAM" \
+    --client-id="$OAUTH2_PROXY_CLIENT_ID" \
+    --client-secret="$OAUTH2_PROXY_CLIENT_SECRET" \
+    --cookie-secret="$OAUTH2_PROXY_COOKIE_SECRET" \
+    --email-domain="*" \
+    --redirect-url="$OAUTH2_PROXY_REDIRECT_URL" \
+    --cookie-secure=true \
+    --cookie-httponly=true \
+    --cookie-samesite="lax" \
+    --set-xauthrequest=false \
+    --skip-provider-button=true \
+    --reverse-proxy=true
