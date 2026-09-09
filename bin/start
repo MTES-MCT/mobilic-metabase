@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 
-set -e
+set -eo pipefail
 
-# Install oauth2-proxy if not already present
+# installed at runtime because multi-buildpack has no hook for custom binaries
 if [ ! -f ./bin/oauth2-proxy ]; then
     ./bin/install-oauth2-proxy
 fi
@@ -44,7 +44,7 @@ JAVA_OPTS+=" -server"
 JAVA_OPTS+=" -Djava.awt.headless=true"
 JAVA_OPTS+=" -Dfile.encoding=UTF-8"
 
-# Ensure Metabase stops if oauth2-proxy dies and vice versa
+# Cleanup: kills Metabase if the script exits during startup (before exec replaces the process)
 EXITCODE=0
 cleanup() {
     echo "  -> Shutting down..."
@@ -98,4 +98,5 @@ exec ./bin/oauth2-proxy \
     --cookie-httponly=true \
     --cookie-samesite="lax" \
     --set-xauthrequest=false \
-    --skip-provider-button=true
+    --skip-provider-button=true \
+    --reverse-proxy=true
