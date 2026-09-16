@@ -8,7 +8,7 @@ if [ ! -f ./bin/oauth2-proxy ]; then
 fi
 
 # Check required oauth2-proxy variables
-for var in OAUTH2_PROXY_CLIENT_ID OAUTH2_PROXY_CLIENT_SECRET OAUTH2_PROXY_COOKIE_SECRET OAUTH2_PROXY_GITHUB_ORG OAUTH2_PROXY_GITHUB_TEAM OAUTH2_PROXY_REDIRECT_URL; do
+for var in OAUTH2_PROXY_CLIENT_ID OAUTH2_PROXY_CLIENT_SECRET OAUTH2_PROXY_COOKIE_SECRET OAUTH2_PROXY_GITHUB_USERS OAUTH2_PROXY_REDIRECT_URL; do
     if [ -z "${!var}" ]; then
         echo "  -> ERROR: $var is not set"
         exit 1
@@ -82,13 +82,19 @@ if [ "$READY" != "true" ]; then
     exit 1
 fi
 
+GH_USER_ARGS=()
+IFS=',' read -ra _ghu <<< "$OAUTH2_PROXY_GITHUB_USERS"
+for u in "${_ghu[@]}"; do
+    u="${u// /}"
+    [ -n "$u" ] && GH_USER_ARGS+=(--github-user="$u")
+done
+
 # Start oauth2-proxy on public $PORT, proxying to Metabase
 exec ./bin/oauth2-proxy \
     --http-address="0.0.0.0:$PORT" \
     --upstream="http://localhost:$METABASE_PORT" \
     --provider=github \
-    --github-org="$OAUTH2_PROXY_GITHUB_ORG" \
-    --github-team="$OAUTH2_PROXY_GITHUB_TEAM" \
+    "${GH_USER_ARGS[@]}" \
     --client-id="$OAUTH2_PROXY_CLIENT_ID" \
     --client-secret="$OAUTH2_PROXY_CLIENT_SECRET" \
     --cookie-secret="$OAUTH2_PROXY_COOKIE_SECRET" \
