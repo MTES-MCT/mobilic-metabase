@@ -8,6 +8,17 @@ readonly DOWNLOAD_TIMEOUT="1h"
 log()       { echo ">>> $*"; }
 psql_admin() { psql "$ANALYTICS_DATABASE_URL" -v ON_ERROR_STOP=1 "$@"; }
 
+sentry_checkin() {
+  [ -n "${SENTRY_CRONS_URL:-}" ] || return 0
+  curl -fsS -m 10 "${SENTRY_CRONS_URL}?status=$1" >/dev/null 2>&1 || true
+}
+
+cleanup() {
+  local code=$?
+  [ -n "${work:-}" ] && rm -rf "$work"
+  [ "$code" -ne 0 ] && sentry_checkin error
+}
+
 ensure_scalingo_cli() {
   command -v scalingo >/dev/null && return
   install-scalingo-cli || curl -sSL https://cli-dl.scalingo.com/install | bash
@@ -135,7 +146,9 @@ assert_no_unmasked_pii() {
 
 main() {
   require_env
-  local work; work="$(mktemp -d)"; trap 'rm -rf "$work"' EXIT
+  work="$(mktemp -d)"
+  sentry_checkin in_progress
+  trap cleanup EXIT
   export PGOPTIONS="-c synchronous_commit=off -c maintenance_work_mem=512MB -c lock_timeout=300000"
 
   log "Ensure Scalingo CLI";     ensure_scalingo_cli
@@ -148,6 +161,7 @@ main() {
   log "Guard anon.detect";       assert_no_unmasked_pii
   log "Unlock Metabase access";  unlock_metabase
   log "OK: masked copy up to date ($(date -u))"
+  sentry_checkin ok
 }
 
 usage() {
