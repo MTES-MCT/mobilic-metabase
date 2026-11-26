@@ -43,6 +43,7 @@ JAVA_OPTS+=" -XX:+UseStringDeduplication"
 JAVA_OPTS+=" -server"
 JAVA_OPTS+=" -Djava.awt.headless=true"
 JAVA_OPTS+=" -Dfile.encoding=UTF-8"
+JAVA_OPTS+=" -XX:-UseBASE64Intrinsics"
 
 # Cleanup: kills Metabase if the script exits during startup (before exec replaces the process)
 EXITCODE=0
